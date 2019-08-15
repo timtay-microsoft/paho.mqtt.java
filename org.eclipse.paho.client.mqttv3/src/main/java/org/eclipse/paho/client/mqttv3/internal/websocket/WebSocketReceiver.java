@@ -17,6 +17,7 @@ package org.eclipse.paho.client.mqttv3.internal.websocket;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.SocketTimeoutException;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 
@@ -66,7 +67,7 @@ public class WebSocketReceiver implements Runnable{
 	public void stop() {
 		final String methodName = "stop";
 		stopping = true;
-        boolean closed = false;
+		boolean closed = false;
 		synchronized (lifecycle) {
 			//@TRACE 850=stopping
 			log.fine(CLASS_NAME,methodName, "850");
@@ -96,11 +97,29 @@ public class WebSocketReceiver implements Runnable{
 		final String methodName = "run";
 
 		while (running && (input != null)) {
+			// try to read the first byte from stream
+			int firstByte = 0x00;
+			try {
+				firstByte = (int) input.read();
+				if (firstByte == -1) {
+					// no data available
+					continue;
+				}
+			} catch (SocketTimeoutException ex) {
+				// no data available
+				continue;
+			} catch (IOException ex) {
+				// Exception occurred while reading the stream.
+				this.stop();
+			}
+
+			// we received something ... lets decode the frame ...
 			try {
 				//@TRACE 852=network read message
 				log.fine(CLASS_NAME, methodName, "852");
-				receiving = input.available() > 0;
-				WebSocketFrame incomingFrame = new WebSocketFrame(input);
+				receiving = true;
+				WebSocketFrame incomingFrame = new WebSocketFrame((byte) firstByte, input);
+
 				if(!incomingFrame.isCloseFlag()){
 					for(int i = 0; i < incomingFrame.getPayload().length; i++){
 						pipedOutputStream.write(incomingFrame.getPayload()[i]);
@@ -115,6 +134,10 @@ public class WebSocketReceiver implements Runnable{
 
 				receiving = false;
 
+			} catch (SocketTimeoutException ex) {
+				// could happen in case not the complete frame have been received in time... to
+				// be checked how to handle this.
+				continue;
 			} catch (IOException ex) {
 				// Exception occurred whilst reading the stream.
 				this.stop();

@@ -132,13 +132,14 @@ public class WebSocketFrame {
 	/**
 	 * Takes an input stream and parses it into a Websocket frame.
 	 * 
+	 * @param firstByte
+	 *            the first byte of the frame read already from input stream
 	 * @param input
-	 *            The incoming {@link InputStream}
+	 *            the incoming {@link InputStream}
 	 * @throws IOException
 	 *             if an exception occurs whilst reading the input stream
 	 */
-	public WebSocketFrame(InputStream input) throws IOException {
-		byte firstByte = (byte) input.read();
+	public WebSocketFrame(byte firstByte, InputStream input) throws IOException {
 		setFinAndOpCode(firstByte);
 		if (this.opcode == 2) {
 			byte maskLengthByte = (byte) input.read();
@@ -169,11 +170,15 @@ public class WebSocketFrame {
 				input.read(maskingKey, 0, 4);
 			}
 
+			// wait for all data
+			while (input.available() < payloadLength) {
+			}
+
 			this.payload = new byte[payloadLength];
 			int offsetIndex = 0;
 			int tempLength = payloadLength;
 			int bytesRead = 0;
-			while (offsetIndex != payloadLength) {
+			while (offsetIndex < payloadLength) {
 				bytesRead = input.read(this.payload, offsetIndex, tempLength);
 				offsetIndex += bytesRead;
 				tempLength -= bytesRead;
